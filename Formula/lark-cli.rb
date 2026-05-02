@@ -4,6 +4,11 @@ class LarkCli < Formula
   version "1.0.23"
   license "MIT"
 
+  livecheck do
+    url :stable
+    strategy :github_latest
+  end
+
   if OS.mac?
     if Hardware::CPU.arm?
       url "https://github.com/larksuite/cli/releases/download/v1.0.23/lark-cli-1.0.23-darwin-arm64.tar.gz"
