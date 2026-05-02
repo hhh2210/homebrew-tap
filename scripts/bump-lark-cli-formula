@@ -1,0 +1,125 @@
+#!/opt/homebrew/bin/python3.14
+import json
+import pathlib
+import re
+import subprocess
+import sys
+
+REPO = pathlib.Path("/Users/larry_1/Opensource/homebrew-local")
+FORMULA = REPO / "Formula" / "lark-cli.rb"
+API_URL = "https://api.github.com/repos/larksuite/cli/releases/latest"
+GIT = "/opt/homebrew/bin/git"
+CURL = "/usr/bin/curl"
+
+
+def run(args, *, capture=False):
+    result = subprocess.run(
+        args,
+        cwd=REPO,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE if capture else None,
+        stderr=subprocess.STDOUT if capture else None,
+    )
+    return result.stdout if capture else ""
+
+
+def fetch_latest_release():
+    raw = run([CURL, "-fsSL", "--retry", "3", API_URL], capture=True)
+    return json.loads(raw)
+
+
+def sha256_for(assets, name):
+    asset = assets.get(name)
+    if not asset:
+        raise RuntimeError(f"missing release asset: {name}")
+
+    digest = asset.get("digest", "")
+    if digest.startswith("sha256:"):
+        return digest.removeprefix("sha256:")
+
+    raise RuntimeError(f"missing sha256 digest for asset: {name}")
+
+
+def render_formula(version, checksums):
+    return f'''class LarkCli < Formula
+  desc "Lark/Feishu CLI tool"
+  homepage "https://github.com/larksuite/cli"
+  version "{version}"
+  license "MIT"
+
+  livecheck do
+    url :stable
+    strategy :github_latest
+  end
+
+  if OS.mac?
+    if Hardware::CPU.arm?
+      url "https://github.com/larksuite/cli/releases/download/v{version}/lark-cli-{version}-darwin-arm64.tar.gz"
+      sha256 "{checksums["darwin-arm64"]}"
+    else
+      url "https://github.com/larksuite/cli/releases/download/v{version}/lark-cli-{version}-darwin-amd64.tar.gz"
+      sha256 "{checksums["darwin-amd64"]}"
+    end
+  elsif OS.linux?
+    if Hardware::CPU.arm?
+      url "https://github.com/larksuite/cli/releases/download/v{version}/lark-cli-{version}-linux-arm64.tar.gz"
+      sha256 "{checksums["linux-arm64"]}"
+    else
+      url "https://github.com/larksuite/cli/releases/download/v{version}/lark-cli-{version}-linux-amd64.tar.gz"
+      sha256 "{checksums["linux-amd64"]}"
+    end
+  end
+
+  def install
+    bin.install "lark-cli"
+  end
+
+  test do
+    assert_match "lark-cli version #{{version}}", shell_output("#{{bin}}/lark-cli --version")
+  end
+end
+'''
+
+
+def main():
+    release = fetch_latest_release()
+    tag = release["tag_name"]
+    version = tag.removeprefix("v")
+    current_text = FORMULA.read_text()
+    current_match = re.search(r'^  version "([^"]+)"$', current_text, re.MULTILINE)
+    if not current_match:
+        raise RuntimeError("cannot find current formula version")
+
+    current = current_match.group(1)
+    if current == version:
+        print(f"lark-cli formula already current: {version}")
+        return 0
+
+    dirty = run([GIT, "status", "--porcelain"], capture=True).strip()
+    if dirty:
+        print("homebrew-local repo is dirty; skipping lark-cli formula bump")
+        print(dirty)
+        return 0
+
+    assets = {asset["name"]: asset for asset in release["assets"]}
+    checksums = {
+        "darwin-arm64": sha256_for(assets, f"lark-cli-{version}-darwin-arm64.tar.gz"),
+        "darwin-amd64": sha256_for(assets, f"lark-cli-{version}-darwin-amd64.tar.gz"),
+        "linux-arm64": sha256_for(assets, f"lark-cli-{version}-linux-arm64.tar.gz"),
+        "linux-amd64": sha256_for(assets, f"lark-cli-{version}-linux-amd64.tar.gz"),
+    }
+
+    FORMULA.write_text(render_formula(version, checksums))
+    run([GIT, "add", "Formula/lark-cli.rb"])
+    run([GIT, "commit", "-m", f"Update lark-cli to {version}"])
+    print(f"updated lark-cli formula: {current} -> {version}")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except Exception as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        raise SystemExit(1)
