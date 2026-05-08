@@ -1,7 +1,7 @@
 class LarkCli < Formula
   desc "Lark/Feishu CLI tool"
   homepage "https://github.com/larksuite/cli"
-  version "1.0.25"
+  version "1.0.26"
   license "MIT"
 
   livecheck do
@@ -11,19 +11,19 @@ class LarkCli < Formula
 
   if OS.mac?
     if Hardware::CPU.arm?
-      url "https://github.com/larksuite/cli/releases/download/v1.0.25/lark-cli-1.0.25-darwin-arm64.tar.gz"
-      sha256 "a7765ea6e1f9ccfc8d17a4a03cd2c1856d28640cc2c173b616dfb3ee1e79104b"
+      url "https://github.com/larksuite/cli/releases/download/v1.0.26/lark-cli-1.0.26-darwin-arm64.tar.gz"
+      sha256 "a02c688086180b995fe8bd1a98ae7c1f033e3663a187c283f5e962c9ca566e85"
     else
-      url "https://github.com/larksuite/cli/releases/download/v1.0.25/lark-cli-1.0.25-darwin-amd64.tar.gz"
-      sha256 "1f9d61ce373583958042f7d2466072be9f65050e4732749e3301ee16ae2156d2"
+      url "https://github.com/larksuite/cli/releases/download/v1.0.26/lark-cli-1.0.26-darwin-amd64.tar.gz"
+      sha256 "c61883540bf50360e42bd07fde9058b2ef614d9b799f5cd8ab16d4fc1cb9cbd1"
     end
   elsif OS.linux?
     if Hardware::CPU.arm?
-      url "https://github.com/larksuite/cli/releases/download/v1.0.25/lark-cli-1.0.25-linux-arm64.tar.gz"
-      sha256 "68499efdf752e028e2010ff828b65409dc600ddd47b2e50b8cd70ca43ae73a5b"
+      url "https://github.com/larksuite/cli/releases/download/v1.0.26/lark-cli-1.0.26-linux-arm64.tar.gz"
+      sha256 "dbb506264c7af2f2d40d6acb03561def21f4f7fb963e2064c35affe55fe436c8"
     else
-      url "https://github.com/larksuite/cli/releases/download/v1.0.25/lark-cli-1.0.25-linux-amd64.tar.gz"
-      sha256 "ed5db1a7e0794446a3d95c0110b3af11245f48288710b2d86645fbca5a8a0724"
+      url "https://github.com/larksuite/cli/releases/download/v1.0.26/lark-cli-1.0.26-linux-amd64.tar.gz"
+      sha256 "dadf7eb96313ec90300122c1fa40e949cb9a823ef2fab0537052ba44f683b702"
     end
   end
 
