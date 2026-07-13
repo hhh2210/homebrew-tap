@@ -1,0 +1,52 @@
+#!/bin/bash
+set -euo pipefail
+
+repo="$(cd "$(dirname "$0")/.." && pwd)"
+formula="$repo/Formula/binance-cli.rb"
+registry_url="https://registry.npmjs.org/%40binance%2Fbinance-cli/latest"
+
+if ! git -C "$repo" diff --quiet -- "$formula" ||
+	! git -C "$repo" diff --cached --quiet -- "$formula"; then
+	echo "binance-cli formula has uncommitted changes; refusing to overwrite" >&2
+	exit 1
+fi
+
+metadata="$(curl -fsSL --retry 3 "$registry_url")"
+latest="$(jq -r '.version' <<<"$metadata")"
+tarball="$(jq -r '.dist.tarball' <<<"$metadata")"
+current="$(sed -nE 's#.*binance-cli-([0-9][^/]*)\.tgz.*#\1#p' "$formula")"
+
+if [[ ! "$latest" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.]+)?$ ]]; then
+	echo "invalid npm version: $latest" >&2
+	exit 1
+fi
+
+expected="https://registry.npmjs.org/@binance/binance-cli/-/binance-cli-$latest.tgz"
+if [[ "$tarball" != "$expected" ]]; then
+	echo "unexpected npm tarball URL: $tarball" >&2
+	exit 1
+fi
+
+if [[ "$current" == "$latest" ]]; then
+	echo "binance-cli formula already current: $latest"
+	exit 0
+fi
+
+sha256="$(curl -fsSL --retry 3 "$tarball" | shasum -a 256 | awk '{print $1}')"
+tmp="$(mktemp)"
+trap 'rm -f "$tmp"' EXIT
+
+sed -E \
+	-e "s#binance-cli-[0-9A-Za-z.-]+\\.tgz#binance-cli-$latest.tgz#" \
+	-e "s#sha256 \"[0-9a-f]{64}\"#sha256 \"$sha256\"#" \
+	"$formula" >"$tmp"
+mv "$tmp" "$formula"
+trap - EXIT
+
+brew style "$formula"
+git -C "$repo" add Formula/binance-cli.rb
+git -C "$repo" commit -m "Update binance-cli to $latest" -- Formula/binance-cli.rb
+
+echo "updated binance-cli formula: $current -> $latest"
+echo "run: brew update && brew audit --formula larry/local/binance-cli"
+echo "then: brew upgrade larry/local/binance-cli"
