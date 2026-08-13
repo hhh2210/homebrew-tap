@@ -22,6 +22,7 @@ LARK_CLI = "/opt/homebrew/bin/lark-cli"
 SKILLSHARE = "/opt/homebrew/bin/skillshare"
 REPO_URL = "https://github.com/larksuite/cli.git"
 SELECTED_SKILLS = ("lark-contact", "lark-doc", "lark-drive", "lark-im", "lark-openapi-explorer", "lark-shared", "lark-wiki")
+ALLOWED_HIGH_FINDINGS = {("lark-im", "references/lark-im-message-enrichment.md", 18), ("lark-im", "references/lark-im-message-enrichment.md", 20)}
 
 
 class SyncError(RuntimeError):
@@ -78,6 +79,10 @@ def git_output(*args):
     return run([GIT, "-C", str(CHECKOUT), *args], capture=True).strip()
 
 
+def git_run(*args):
+    run([GIT, "-C", str(CHECKOUT), *args])
+
+
 def assert_checkout_clean():
     dirty = git_output("status", "--porcelain")
     if dirty:
@@ -113,16 +118,8 @@ def checkout_tag(tag):
         git_output("sparse-checkout", "set", "skills")
     else:
         assert_checkout_clean()
-        run([
-            GIT,
-            "-C",
-            str(CHECKOUT),
-            "fetch",
-            "--depth=1",
-            "origin",
-            f"refs/tags/{tag}:refs/tags/{tag}",
-        ])
-    run([GIT, "-C", str(CHECKOUT), "checkout", "--detach", tag])
+        git_run("fetch", "--depth=1", "origin", f"refs/tags/{tag}:refs/tags/{tag}")
+    git_run("checkout", "--detach", tag)
     return verify_local_checkout(tag)
 
 
@@ -160,6 +157,7 @@ def verify_universal_symlinks():
 
 def audit_checkout():
     totals = {key: 0 for key in ("critical", "high", "medium", "low", "info")}
+    unexpected_high = []
     for name in SELECTED_SKILLS:
         result = subprocess.run(
             [
@@ -187,8 +185,14 @@ def audit_checkout():
             raise SyncError(f"invalid audit output for {name}: {result.stdout}\n{result.stderr}") from exc
         for key in totals:
             totals[key] += int(summary.get(key, 0))
+        for finding in payload["results"][0].get("findings") or []:
+            key = (name, finding.get("file"), finding.get("line"))
+            if finding.get("severity") == "HIGH" and key not in ALLOWED_HIGH_FINDINGS:
+                unexpected_high.append(key)
         if result.returncode != 0 or summary.get("critical", 0) or summary.get("scanErrors", 0):
             raise SyncError(f"audit blocked {name}: {result.stdout}\n{result.stderr}")
+    if unexpected_high:
+        raise SyncError(f"audit found unreviewed HIGH findings: {unexpected_high}")
     return totals
 
 
