@@ -1,6 +1,11 @@
 name: update formulae
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/update-formulae.yml
   workflow_dispatch:
   schedule:
     - cron: "23 4 * * *"
