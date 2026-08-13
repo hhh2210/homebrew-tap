@@ -40,6 +40,7 @@ sed -E \
 	-e "s#binance-cli-[0-9A-Za-z.-]+\\.tgz#binance-cli-$latest.tgz#" \
 	-e "s#sha256 \"[0-9a-f]{64}\"#sha256 \"$sha256\"#" \
 	"$formula" >"$tmp"
+chmod 0644 "$tmp"
 mv "$tmp" "$formula"
 trap - EXIT
 
