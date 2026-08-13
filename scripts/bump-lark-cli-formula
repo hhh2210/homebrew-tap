@@ -1,15 +1,16 @@
-#!/opt/homebrew/bin/python3.14
+#!/usr/bin/env python3
 import json
+import os
 import pathlib
 import re
 import subprocess
 import sys
 
-REPO = pathlib.Path("/Users/larry_1/Opensource/homebrew-local")
+REPO = pathlib.Path(__file__).resolve().parent.parent
 FORMULA = REPO / "Formula" / "lark-cli.rb"
 API_PATH = "repos/larksuite/cli/releases/latest"
-GIT = "/opt/homebrew/bin/git"
-GH = "/opt/homebrew/bin/gh"
+GIT = os.environ.get("GIT", "git")
+GH = os.environ.get("GH", "gh")
 
 
 def run(args, *, capture=False):
@@ -35,8 +36,9 @@ def sha256_for(assets, name):
         raise RuntimeError(f"missing release asset: {name}")
 
     digest = asset.get("digest", "")
-    if digest.startswith("sha256:"):
-        return digest.removeprefix("sha256:")
+    match = re.fullmatch(r"sha256:([0-9a-f]{64})", digest)
+    if match:
+        return match.group(1)
 
     raise RuntimeError(f"missing sha256 digest for asset: {name}")
 
@@ -84,7 +86,10 @@ end
 def main():
     release = fetch_latest_release()
     tag = release["tag_name"]
-    version = tag.removeprefix("v")
+    version_match = re.fullmatch(r"v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)", tag)
+    if not version_match:
+        raise RuntimeError(f"unexpected release tag: {tag}")
+    version = version_match.group(1)
     current_text = FORMULA.read_text()
     current_match = re.search(
         r"releases/download/v([^/]+)/lark-cli-([^/]+)-darwin-arm64[.]tar[.]gz",
@@ -102,7 +107,9 @@ def main():
 
     dirty = run([GIT, "status", "--porcelain"], capture=True).strip()
     if dirty:
-        print("homebrew-local repo is dirty; refusing lark-cli formula bump", file=sys.stderr)
+        print(
+            "tap repository is dirty; refusing lark-cli formula bump", file=sys.stderr
+        )
         print(dirty, file=sys.stderr)
         return 2
 
@@ -124,6 +131,12 @@ def main():
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except Exception as exc:
+    except (
+        json.JSONDecodeError,
+        KeyError,
+        OSError,
+        RuntimeError,
+        subprocess.SubprocessError,
+    ) as exc:
         print(f"error: {exc}", file=sys.stderr)
         raise SystemExit(1)

@@ -1,0 +1,72 @@
+name: update formulae
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 4 * * *"
+
+permissions: {}
+
+concurrency:
+  group: update-formulae
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash -xeuo pipefail {0}
+
+jobs:
+  update:
+    name: update and validate formulae
+    runs-on: macos-26
+    permissions:
+      contents: write # Push only formula commits that pass every validation step.
+    steps:
+      - name: Set up Homebrew
+        id: set-up-homebrew
+        uses: Homebrew/actions/setup-homebrew@fd832223f9f99ebf0244dd20658680e5d4aca049 # 2026.08.03.2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cache Homebrew Bundler RubyGems
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.set-up-homebrew.outputs.gems-path }}
+          key: ${{ runner.os }}-rubygems-${{ steps.set-up-homebrew.outputs.gems-hash }}
+          restore-keys: ${{ runner.os }}-rubygems-
+
+      - name: Set up git
+        uses: Homebrew/actions/git-user-config@fd832223f9f99ebf0244dd20658680e5d4aca049 # 2026.08.03.2
+
+      - name: Check upstream releases
+        id: bump
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          base=$(git rev-parse HEAD)
+          ./scripts/bump-lark-cli-formula
+          ./scripts/bump-binance-cli-formula
+
+          if git diff --quiet "$base" HEAD -- Formula; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate updated formulae
+        if: steps.bump.outputs.changed == 'true'
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: 1
+          TAP_NAME: ${{ steps.set-up-homebrew.outputs.tap-name }}
+        run: |
+          brew style Formula/*.rb
+          brew audit --strict --online "$TAP_NAME/lark-cli" "$TAP_NAME/binance-cli"
+          brew install "$TAP_NAME/lark-cli" "$TAP_NAME/binance-cli"
+          brew test "$TAP_NAME/lark-cli" "$TAP_NAME/binance-cli"
+          brew livecheck "$TAP_NAME/lark-cli" "$TAP_NAME/binance-cli"
+
+      - name: Push validated updates
+        if: steps.bump.outputs.changed == 'true'
+        uses: Homebrew/actions/git-try-push@fd832223f9f99ebf0244dd20658680e5d4aca049 # 2026.08.03.2
+        with:
+          branch: main

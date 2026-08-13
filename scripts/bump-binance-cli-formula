@@ -48,5 +48,5 @@ git -C "$repo" add Formula/binance-cli.rb
 git -C "$repo" commit -m "Update binance-cli to $latest" -- Formula/binance-cli.rb
 
 echo "updated binance-cli formula: $current -> $latest"
-echo "run: brew update && brew audit --formula larry/local/binance-cli"
-echo "then: brew upgrade larry/local/binance-cli"
+echo "run: brew update && brew audit --formula hhh2210/tap/binance-cli"
+echo "then: brew upgrade hhh2210/tap/binance-cli"
