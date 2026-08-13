@@ -30,12 +30,6 @@ class LarkCli < Formula
     bin.install "lark-cli"
   end
 
-  def post_install
-    system bin/"lark-cli", "update"
-  rescue
-    opoo "lark-cli installed, but agent skills were not synced. Run `lark-cli update` manually."
-  end
-
   test do
     assert_match "lark-cli version #{version}", shell_output("#{bin}/lark-cli --version")
   end

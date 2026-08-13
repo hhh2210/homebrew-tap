@@ -1,0 +1,293 @@
+#!/opt/homebrew/bin/python3.14
+import fcntl
+import hashlib
+import json
+import os
+import pathlib
+import re
+import subprocess
+import sys
+import tempfile
+from datetime import datetime, timezone
+
+HOME = pathlib.Path("/Users/larry_1")
+CHECKOUT = HOME / "Opensource" / "larksuite-cli-skillshare"
+SKILLS_ROOT = HOME / ".config" / "skillshare" / "skills"
+SYNC_STATE = HOME / ".config" / "skillshare" / "lark-cli-sync-state.json"
+LARK_STATE = HOME / ".lark-cli" / "skills-state.json"
+LOCK_FILE = HOME / ".config" / "skillshare" / "lark-cli-sync.lock"
+
+GIT = "/opt/homebrew/bin/git"
+LARK_CLI = "/opt/homebrew/bin/lark-cli"
+SKILLSHARE = "/opt/homebrew/bin/skillshare"
+REPO_URL = "https://github.com/larksuite/cli.git"
+SELECTED_SKILLS = ("lark-contact", "lark-doc", "lark-drive", "lark-im", "lark-openapi-explorer", "lark-shared", "lark-wiki")
+
+
+class SyncError(RuntimeError):
+    pass
+
+
+def run(args, *, capture=False):
+    result = subprocess.run(
+        args,
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE if capture else None,
+        stderr=subprocess.STDOUT if capture else None,
+    )
+    if result.returncode != 0:
+        detail = (result.stdout or "").strip()
+        raise SyncError(f"command failed ({result.returncode}): {' '.join(args)}\n{detail}")
+    return result.stdout if capture else ""
+
+
+def read_json(path):
+    try:
+        return json.loads(path.read_text())
+    except FileNotFoundError:
+        return None
+    except (OSError, json.JSONDecodeError) as exc:
+        raise SyncError(f"cannot read state {path}: {exc}") from exc
+
+
+def atomic_write_json(path, value):
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    tmp = pathlib.Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w") as handle:
+            json.dump(value, handle, ensure_ascii=False, indent=2)
+            handle.write("\n")
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, path)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
+
+
+def cli_version():
+    text = run([LARK_CLI, "--version"], capture=True).strip()
+    match = re.fullmatch(r"lark-cli version v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)", text)
+    if not match:
+        raise SyncError(f"unexpected lark-cli version output: {text!r}")
+    return match.group(1)
+
+
+def git_output(*args):
+    return run([GIT, "-C", str(CHECKOUT), *args], capture=True).strip()
+
+
+def assert_checkout_clean():
+    dirty = git_output("status", "--porcelain")
+    if dirty:
+        raise SyncError(f"managed checkout is dirty; refusing to overwrite:\n{dirty}")
+
+
+def verify_local_checkout(tag):
+    if not (CHECKOUT / ".git").exists():
+        raise SyncError(f"managed checkout is missing: {CHECKOUT}")
+    assert_checkout_clean()
+    head = git_output("rev-parse", "HEAD")
+    tagged = git_output("rev-parse", f"{tag}^{{commit}}")
+    if head != tagged:
+        raise SyncError(f"managed checkout is not at {tag}: {head}")
+    return head
+
+
+def checkout_tag(tag):
+    if not (CHECKOUT / ".git").exists():
+        CHECKOUT.parent.mkdir(parents=True, exist_ok=True)
+        run([
+            GIT,
+            "clone",
+            "--filter=blob:none",
+            "--no-checkout",
+            "--depth=1",
+            "--branch",
+            tag,
+            "--sparse",
+            REPO_URL,
+            str(CHECKOUT),
+        ])
+        git_output("sparse-checkout", "set", "skills")
+    else:
+        assert_checkout_clean()
+        run([
+            GIT,
+            "-C",
+            str(CHECKOUT),
+            "fetch",
+            "--depth=1",
+            "origin",
+            f"refs/tags/{tag}:refs/tags/{tag}",
+        ])
+    run([GIT, "-C", str(CHECKOUT), "checkout", "--detach", tag])
+    return verify_local_checkout(tag)
+
+
+def tree_digest(root):
+    if not root.is_dir():
+        raise SyncError(f"skill directory is missing: {root}")
+    digest = hashlib.sha256()
+    for path in sorted(root.rglob("*")):
+        relative = path.relative_to(root).as_posix().encode()
+        digest.update(relative + b"\0")
+        if path.is_symlink():
+            digest.update(b"L" + os.readlink(path).encode() + b"\0")
+        elif path.is_file():
+            digest.update(b"F" + path.read_bytes())
+        elif path.is_dir():
+            digest.update(b"D")
+    return digest.hexdigest()
+
+
+def source_mismatches():
+    mismatches = []
+    for name in SELECTED_SKILLS:
+        if tree_digest(SKILLS_ROOT / name) != tree_digest(CHECKOUT / "skills" / name):
+            mismatches.append(name)
+    return mismatches
+
+
+def verify_universal_symlinks():
+    for name in SELECTED_SKILLS:
+        link = HOME / ".agents" / "skills" / name
+        expected = SKILLS_ROOT / name
+        if not link.is_symlink() or pathlib.Path(os.readlink(link)) != expected:
+            raise SyncError(f"Skillshare universal target is not the expected symlink: {link}")
+
+
+def audit_checkout():
+    totals = {key: 0 for key in ("critical", "high", "medium", "low", "info")}
+    for name in SELECTED_SKILLS:
+        result = subprocess.run(
+            [
+                SKILLSHARE,
+                "audit",
+                str(CHECKOUT / "skills" / name),
+                "--profile",
+                "strict",
+                "--threshold",
+                "critical",
+                "--dedupe",
+                "global",
+                "--format",
+                "json",
+                "--yes",
+            ],
+            check=False,
+            text=True,
+            capture_output=True,
+        )
+        try:
+            payload = json.loads(result.stdout)
+            summary = payload["summary"]
+        except (json.JSONDecodeError, KeyError) as exc:
+            raise SyncError(f"invalid audit output for {name}: {result.stdout}\n{result.stderr}") from exc
+        for key in totals:
+            totals[key] += int(summary.get(key, 0))
+        if result.returncode != 0 or summary.get("critical", 0) or summary.get("scanErrors", 0):
+            raise SyncError(f"audit blocked {name}: {result.stdout}\n{result.stderr}")
+    return totals
+
+
+def install_and_sync():
+    for name in SELECTED_SKILLS:
+        run([
+            SKILLSHARE,
+            "install",
+            str(CHECKOUT / "skills" / name),
+            "--name",
+            name,
+            "--force",
+            "--skip-audit",
+            "-g",
+        ], capture=True)
+    mismatches = source_mismatches()
+    if mismatches:
+        raise SyncError(f"Skillshare install did not reproduce the release tag: {', '.join(mismatches)}")
+    sync_output = run([SKILLSHARE, "sync", "-g", "--json"], capture=True)
+    try:
+        sync_summary = json.loads(sync_output)
+    except json.JSONDecodeError as exc:
+        raise SyncError(f"invalid Skillshare sync output: {sync_output}") from exc
+    verify_universal_symlinks()
+    return sync_summary
+
+
+def official_skill_names():
+    payload = json.loads(run([LARK_CLI, "skills", "list"], capture=True))
+    names = sorted(item["name"] for item in payload.get("skills", []))
+    missing = sorted(set(SELECTED_SKILLS) - set(names))
+    if missing:
+        raise SyncError(f"selected skills are absent from the installed CLI: {', '.join(missing)}")
+    return names
+
+
+def write_states(version, commit):
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    official = official_skill_names()
+    skipped = sorted(set(official) - set(SELECTED_SKILLS))
+    atomic_write_json(LARK_STATE, {
+        "version": version,
+        "official_skills": official,
+        "updated_skills": list(SELECTED_SKILLS),
+        "added_official_skills": [],
+        "skipped_deleted_skills": skipped,
+        "updated_at": now,
+    })
+    atomic_write_json(SYNC_STATE, {
+        "version": version,
+        "tag": f"v{version}",
+        "checkout_commit": commit,
+        "skills": list(SELECTED_SKILLS),
+        "updated_at": now,
+    })
+
+
+def main():
+    LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with LOCK_FILE.open("w") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise SyncError("another lark-cli skills sync is already running") from exc
+
+        version = cli_version()
+        tag = f"v{version}"
+        state = read_json(SYNC_STATE)
+
+        if state is not None:
+            if tuple(state.get("skills", [])) != SELECTED_SKILLS:
+                raise SyncError("managed skill selection changed; refusing automatic overwrite")
+            previous_tag = state.get("tag", f"v{state.get('version', '')}")
+            verify_local_checkout(previous_tag)
+            drift = source_mismatches()
+            if drift:
+                raise SyncError(f"canonical Lark skills have local changes: {', '.join(drift)}")
+            if state.get("version") == version:
+                lark_state = read_json(LARK_STATE)
+                if not lark_state or lark_state.get("version") != version:
+                    write_states(version, git_output("rev-parse", "HEAD"))
+                print(f"lark-cli skills already current: {version} ({len(SELECTED_SKILLS)} selected)")
+                return 0
+
+        commit = checkout_tag(tag)
+        totals = audit_checkout()
+        sync_summary = install_and_sync()
+        write_states(version, commit)
+        print(
+            f"synced lark-cli skills to {version}: {len(SELECTED_SKILLS)} selected; "
+            f"audit critical={totals['critical']} high={totals['high']}; "
+            f"targets_updated={sync_summary.get('updated', 0)}"
+        )
+        return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except SyncError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        raise SystemExit(1)
