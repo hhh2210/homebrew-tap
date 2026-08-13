@@ -7,9 +7,9 @@ import sys
 
 REPO = pathlib.Path("/Users/larry_1/Opensource/homebrew-local")
 FORMULA = REPO / "Formula" / "lark-cli.rb"
-API_URL = "https://api.github.com/repos/larksuite/cli/releases/latest"
+API_PATH = "repos/larksuite/cli/releases/latest"
 GIT = "/opt/homebrew/bin/git"
-CURL = "/usr/bin/curl"
+GH = "/opt/homebrew/bin/gh"
 
 
 def run(args, *, capture=False):
@@ -25,7 +25,7 @@ def run(args, *, capture=False):
 
 
 def fetch_latest_release():
-    raw = run([CURL, "-fsSL", "--retry", "3", API_URL], capture=True)
+    raw = run([GH, "api", API_PATH], capture=True)
     return json.loads(raw)
 
 
@@ -75,6 +75,12 @@ def render_formula(version, checksums):
     bin.install "lark-cli"
   end
 
+  def post_install
+    system bin/"lark-cli", "update"
+  rescue
+    opoo "lark-cli installed, but agent skills were not synced. Run `lark-cli update` manually."
+  end
+
   test do
     assert_match "lark-cli version #{{version}}", shell_output("#{{bin}}/lark-cli --version")
   end
@@ -98,9 +104,9 @@ def main():
 
     dirty = run([GIT, "status", "--porcelain"], capture=True).strip()
     if dirty:
-        print("homebrew-local repo is dirty; skipping lark-cli formula bump")
-        print(dirty)
-        return 0
+        print("homebrew-local repo is dirty; refusing lark-cli formula bump", file=sys.stderr)
+        print(dirty, file=sys.stderr)
+        return 2
 
     assets = {asset["name"]: asset for asset in release["assets"]}
     checksums = {
