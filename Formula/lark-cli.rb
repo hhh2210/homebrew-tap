@@ -1,7 +1,6 @@
 class LarkCli < Formula
   desc "Lark/Feishu CLI tool"
   homepage "https://github.com/larksuite/cli"
-  version "1.0.86"
   license "MIT"
 
   livecheck do

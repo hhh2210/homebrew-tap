@@ -45,7 +45,6 @@ def render_formula(version, checksums):
     return f'''class LarkCli < Formula
   desc "Lark/Feishu CLI tool"
   homepage "https://github.com/larksuite/cli"
-  version "{version}"
   license "MIT"
 
   livecheck do
@@ -93,9 +92,14 @@ def main():
     tag = release["tag_name"]
     version = tag.removeprefix("v")
     current_text = FORMULA.read_text()
-    current_match = re.search(r'^  version "([^"]+)"$', current_text, re.MULTILINE)
+    current_match = re.search(
+        r"releases/download/v([^/]+)/lark-cli-([^/]+)-darwin-arm64[.]tar[.]gz",
+        current_text,
+    )
     if not current_match:
-        raise RuntimeError("cannot find current formula version")
+        raise RuntimeError("cannot find current formula release URL")
+    if current_match.group(1) != current_match.group(2):
+        raise RuntimeError("formula release URL contains inconsistent versions")
 
     current = current_match.group(1)
     if current == version:
