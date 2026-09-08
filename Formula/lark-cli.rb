@@ -10,19 +10,19 @@ class LarkCli < Formula
 
   if OS.mac?
     if Hardware::CPU.arm?
-      url "https://github.com/larksuite/cli/releases/download/v1.0.93/lark-cli-1.0.93-darwin-arm64.tar.gz"
-      sha256 "eaa09754925c00a6858e91518a49ab8e0a24bd4178e4698a7b185046b8ea24e2"
+      url "https://github.com/larksuite/cli/releases/download/v1.0.94/lark-cli-1.0.94-darwin-arm64.tar.gz"
+      sha256 "cdf66d35c950c56f17cc180276c16b8ad4b7241eab715d809114cb57c88a825b"
     else
-      url "https://github.com/larksuite/cli/releases/download/v1.0.93/lark-cli-1.0.93-darwin-amd64.tar.gz"
-      sha256 "bf37861ce5b5fb10c093ffd8b7305f2a80349280cf32563267c29f81cb864e53"
+      url "https://github.com/larksuite/cli/releases/download/v1.0.94/lark-cli-1.0.94-darwin-amd64.tar.gz"
+      sha256 "ec53158a51f2d30fefacfb70904f503d5c6e92e934ca98510ad80112d680000e"
     end
   elsif OS.linux?
     if Hardware::CPU.arm?
-      url "https://github.com/larksuite/cli/releases/download/v1.0.93/lark-cli-1.0.93-linux-arm64.tar.gz"
-      sha256 "800832bb84b0bf74579f49de3219b2ea8b9e72049c5a3ed239680e4cbc31474c"
+      url "https://github.com/larksuite/cli/releases/download/v1.0.94/lark-cli-1.0.94-linux-arm64.tar.gz"
+      sha256 "87ddcba89557936958d8dcba4269d02837a32bb605dc0ac9c1aea8d653cbb7a3"
     else
-      url "https://github.com/larksuite/cli/releases/download/v1.0.93/lark-cli-1.0.93-linux-amd64.tar.gz"
-      sha256 "10031849a1884bf9165cb01de47102b4847fba81bb9eb76f4168125ea9746c51"
+      url "https://github.com/larksuite/cli/releases/download/v1.0.94/lark-cli-1.0.94-linux-amd64.tar.gz"
+      sha256 "60f505be65b43b5e58b01ec671199723483c5f630a03dfdd32d89f7f40f47d53"
     end
   end
 
