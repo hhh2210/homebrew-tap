@@ -11,13 +11,14 @@ Install a formula directly:
 brew install hhh2210/tap/lark-cli
 brew install hhh2210/tap/binance-cli
 brew install hhh2210/tap/native-space-kit
+brew install hhh2210/tap/mihomo-smart
 ```
 
 Or add the tap first:
 
 ```sh
 brew tap hhh2210/tap
-brew install lark-cli binance-cli native-space-kit
+brew install lark-cli binance-cli native-space-kit mihomo-smart
 ```
 
 | Formula | Description | Upstream |
@@ -25,6 +26,7 @@ brew install lark-cli binance-cli native-space-kit
 | `lark-cli` | Lark/Feishu CLI | [larksuite/cli](https://github.com/larksuite/cli) |
 | `binance-cli` | Binance REST API CLI | [binance/binance-cli](https://github.com/binance/binance-cli) |
 | `native-space-kit` | Native macOS Space control (`nsk`, macOS only) | [Fjx-dylanZ/native-space-kit](https://github.com/Fjx-dylanZ/native-space-kit) |
+| `mihomo-smart` | mihomo with the Smart proxy group (`mihomo-smart`, macOS only) | [vernesong/mihomo](https://github.com/vernesong/mihomo) |
 
 ## native-space-kit
 
@@ -40,9 +42,23 @@ and `nsk list`. Native Space IDs are not Desktop numbers. The tool uses private
 macOS APIs, so availability must be rechecked after OS updates. No service or
 background daemon is installed.
 
+## mihomo-smart
+
+This packages the prebuilt `Prerelease-Alpha` binary of vernesong's mihomo
+fork, which adds the `smart` proxy-group type that homebrew/core's `mihomo`
+rejects. It installs as `mihomo-smart`, so both can be installed side by side.
+No service is installed. A process already running keeps its old binary until
+it is restarted.
+
+Upstream rebuilds the same rolling tag and replaces its assets, so the old
+download URL disappears with every build. The formula version is the arm64
+asset's upload time (`YYYY.MM.DD.HHMM`); the build commit is in the URL and in
+`mihomo-smart -v`. Until the daily updater picks up a new build, `brew
+reinstall` of the previous version can fail; an installed binary is unaffected.
+
 ## Updates
 
-The `lark-cli` and `binance-cli` formulae define Homebrew `livecheck` blocks. A scheduled GitHub Actions
+The `lark-cli`, `binance-cli` and `mihomo-smart` formulae define Homebrew `livecheck` blocks. A scheduled GitHub Actions
 workflow checks upstream releases daily. When a version changes, the workflow
 updates the formula and only pushes it after Homebrew style, strict audit,
 installation, test, and livecheck validation pass.

@@ -51,6 +51,7 @@ jobs:
           base=$(git rev-parse HEAD)
           ./scripts/bump-lark-cli-formula
           ./scripts/bump-binance-cli-formula
+          ./scripts/bump-mihomo-smart-formula
 
           if git diff --quiet "$base" HEAD -- Formula; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -65,10 +66,10 @@ jobs:
           TAP_NAME: ${{ steps.set-up-homebrew.outputs.tap-name }}
         run: |
           brew style Formula/*.rb
-          brew audit --strict --online "$TAP_NAME/lark-cli" "$TAP_NAME/binance-cli"
-          brew install "$TAP_NAME/lark-cli" "$TAP_NAME/binance-cli"
-          brew test "$TAP_NAME/lark-cli" "$TAP_NAME/binance-cli"
-          brew livecheck "$TAP_NAME/lark-cli" "$TAP_NAME/binance-cli"
+          brew audit --strict --online "$TAP_NAME/lark-cli" "$TAP_NAME/binance-cli" "$TAP_NAME/mihomo-smart"
+          brew install "$TAP_NAME/lark-cli" "$TAP_NAME/binance-cli" "$TAP_NAME/mihomo-smart"
+          brew test "$TAP_NAME/lark-cli" "$TAP_NAME/binance-cli" "$TAP_NAME/mihomo-smart"
+          brew livecheck "$TAP_NAME/lark-cli" "$TAP_NAME/binance-cli" "$TAP_NAME/mihomo-smart"
 
       - name: Push validated updates
         if: steps.bump.outputs.changed == 'true'

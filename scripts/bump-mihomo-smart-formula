@@ -1,0 +1,196 @@
+#!/usr/bin/env python3
+"""Track vernesong's rolling Prerelease-Alpha Smart build.
+
+Upstream reuses one release tag and replaces its assets on every build, so the
+asset name carries the commit and the old URLs disappear. The formula version
+is the arm64 asset's upload time (monotonic, which Homebrew needs to see an
+upgrade); the commit stays in the URL. A build caught mid-upload, where the
+arm64 and Intel assets name different commits, is refused and retried on the
+next run. Those transient states skip with a warning instead of failing, so
+they do not block the other formula bumps in the same workflow run.
+"""
+
+import json
+import os
+import pathlib
+import re
+import subprocess
+import sys
+
+REPO = pathlib.Path(__file__).resolve().parent.parent
+FORMULA = REPO / "Formula" / "mihomo-smart.rb"
+API_PATH = "repos/vernesong/mihomo/releases/tags/Prerelease-Alpha"
+DOWNLOAD = "https://github.com/vernesong/mihomo/releases/download/Prerelease-Alpha"
+ASSETS = {
+    "arm": re.compile(r"mihomo-darwin-arm64-alpha-smart-([0-9a-f]{7,40})[.]gz"),
+    "intel": re.compile(
+        r"mihomo-darwin-amd64-compatible-alpha-smart-([0-9a-f]{7,40})[.]gz"
+    ),
+}
+GIT = os.environ.get("GIT", "git")
+GH = os.environ.get("GH", "gh")
+
+
+def run(args, *, capture=False):
+    result = subprocess.run(
+        args,
+        cwd=REPO,
+        check=True,
+        text=True,
+        stdout=subprocess.PIPE if capture else None,
+        stderr=subprocess.STDOUT if capture else None,
+    )
+    return result.stdout if capture else ""
+
+
+def fetch_release():
+    raw = run([GH, "api", API_PATH], capture=True)
+    return json.loads(raw)
+
+
+class UpstreamInFlight(Exception):
+    pass
+
+
+def pick(assets, pattern):
+    matches = [
+        (asset, match)
+        for asset in assets
+        if (match := pattern.fullmatch(asset.get("name", "")))
+    ]
+    if not matches:
+        raise UpstreamInFlight(f"no asset matching {pattern.pattern}")
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"expected one asset matching {pattern.pattern}, got {len(matches)}"
+        )
+    asset, match = matches[0]
+    digest = re.fullmatch(r"sha256:([0-9a-f]{64})", asset.get("digest") or "")
+    if not digest:
+        raise RuntimeError(f"missing sha256 digest for asset: {asset['name']}")
+    return asset, match.group(1), digest.group(1)
+
+
+def version_for(asset):
+    stamp = re.match(
+        r"(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})", asset.get("updated_at", "")
+    )
+    if not stamp:
+        raise RuntimeError(f"unexpected updated_at for asset: {asset['name']}")
+    year, month, day, hour, minute = stamp.groups()
+    return f"{year}.{month}.{day}.{hour}{minute}"
+
+
+def render_formula(version, arm, intel):
+    return f'''class MihomoSmart < Formula
+  desc "Mihomo alpha with the Smart proxy group (vernesong fork)"
+  homepage "https://github.com/vernesong/mihomo"
+  version "{version}"
+  license "GPL-3.0-only"
+
+  # Upstream replaces the assets of one rolling tag on every build. The
+  # version is the arm64 asset's upload time; the commit is in the URL.
+  if Hardware::CPU.arm?
+    url "{DOWNLOAD}/{arm["name"]}"
+    sha256 "{arm["sha256"]}"
+  else
+    url "{DOWNLOAD}/{intel["name"]}"
+    sha256 "{intel["sha256"]}"
+  end
+
+  livecheck do
+    url :stable
+    strategy :github_releases do |json|
+      release = json.find {{ |item| item["tag_name"] == "Prerelease-Alpha" }}
+      asset = release&.dig("assets")&.find do |item|
+        item["name"]&.match?(/\\Amihomo-darwin-arm64-alpha-smart-\\h+\\.gz\\z/)
+      end
+      stamp = asset&.dig("updated_at")&.match(/\\A(\\d{{4}})-(\\d{{2}})-(\\d{{2}})T(\\d{{2}}):(\\d{{2}})/)
+      next if stamp.nil?
+
+      "#{{stamp[1]}}.#{{stamp[2]}}.#{{stamp[3]}}.#{{stamp[4]}}#{{stamp[5]}}"
+    end
+  end
+
+  depends_on :macos
+
+  def install
+    # Installed beside homebrew/core's mihomo, which has no Smart group.
+    bin.install Dir["mihomo-darwin-*"].fetch(0) => "mihomo-smart"
+  end
+
+  test do
+    assert_match "alpha-smart", shell_output("#{{bin}}/mihomo-smart -v")
+    (testpath/"config.yaml").write <<~YAML
+      proxies:
+        - {{ name: direct-out, type: direct }}
+      proxy-groups:
+        - {{ name: auto, type: smart, uselightgbm: false, collectdata: false, proxies: [direct-out] }}
+    YAML
+    output = shell_output("#{{bin}}/mihomo-smart -d #{{testpath}} -t -f #{{testpath}}/config.yaml")
+    assert_match "test is successful", output
+  end
+end
+'''
+
+
+def main():
+    release = fetch_release()
+    assets = release.get("assets", [])
+    try:
+        arm_asset, arm_commit, arm_sha = pick(assets, ASSETS["arm"])
+        intel_asset, intel_commit, intel_sha = pick(assets, ASSETS["intel"])
+        if arm_commit != intel_commit:
+            raise UpstreamInFlight(f"arm64 {arm_commit} vs intel {intel_commit}")
+    except UpstreamInFlight as exc:
+        print(f"::warning::mihomo-smart upstream build mid-upload, skipping: {exc}")
+        return 0
+    commit = arm_commit
+    version = version_for(arm_asset)
+
+    current = None
+    if FORMULA.exists():
+        match = re.search(
+            r"mihomo-darwin-arm64-alpha-smart-([0-9a-f]+)[.]gz", FORMULA.read_text()
+        )
+        if not match:
+            raise RuntimeError("cannot find current formula asset URL")
+        current = match.group(1)
+    if current == commit:
+        print(f"mihomo-smart formula already current: {commit}")
+        return 0
+
+    dirty = run([GIT, "status", "--porcelain"], capture=True).strip()
+    if dirty:
+        print(
+            "tap repository is dirty; refusing mihomo-smart formula bump",
+            file=sys.stderr,
+        )
+        print(dirty, file=sys.stderr)
+        return 2
+
+    FORMULA.write_text(
+        render_formula(
+            version,
+            {"name": arm_asset["name"], "sha256": arm_sha},
+            {"name": intel_asset["name"], "sha256": intel_sha},
+        )
+    )
+    run([GIT, "add", "Formula/mihomo-smart.rb"])
+    run([GIT, "commit", "-m", f"Update mihomo-smart to {version} ({commit})"])
+    print(f"updated mihomo-smart formula: {current} -> {commit} ({version})")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except (
+        json.JSONDecodeError,
+        KeyError,
+        OSError,
+        RuntimeError,
+        subprocess.SubprocessError,
+    ) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        raise SystemExit(1)
