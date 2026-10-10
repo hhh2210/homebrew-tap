@@ -1,7 +1,7 @@
 # Homebrew Tap
 
-Homebrew formulae for command-line tools that are not currently available in
-`homebrew/core`.
+Homebrew formulae and casks for tools and independently maintained apps that are
+not currently available in Homebrew's official repositories.
 
 ## Install
 
@@ -12,6 +12,7 @@ brew install hhh2210/tap/lark-cli
 brew install hhh2210/tap/binance-cli
 brew install hhh2210/tap/native-space-kit
 brew install hhh2210/tap/mihomo-smart
+brew install --cask hhh2210/tap/glance-face-unlock
 ```
 
 Or add the tap first:
@@ -27,6 +28,31 @@ brew install lark-cli binance-cli native-space-kit mihomo-smart
 | `binance-cli` | Binance REST API CLI | [binance/binance-cli](https://github.com/binance/binance-cli) |
 | `native-space-kit` | Native macOS Space control (`nsk`, macOS only) | [Fjx-dylanZ/native-space-kit](https://github.com/Fjx-dylanZ/native-space-kit) |
 | `mihomo-smart` | mihomo with the Smart proxy group (`mihomo-smart`, macOS only) | [vernesong/mihomo](https://github.com/vernesong/mihomo) |
+
+## Glance Fork
+
+```sh
+brew install --cask hhh2210/tap/glance-face-unlock
+brew upgrade --cask hhh2210/tap/glance-face-unlock
+```
+
+The `glance-face-unlock` cask installs [hhh2210/glance](https://github.com/hhh2210/glance),
+an independent fork with guided enrollment feedback, as `Glance Fork.app`.
+It supports macOS 15 or later on Apple Silicon and Intel. Its app identity,
+preferences, Keychain service and encrypted face store are separate from the
+upstream app. Quit upstream Glance before using the fork and complete the fork's
+own enrollment and permissions setup.
+
+The release is ad-hoc signed and not notarized by Apple. Homebrew verifies the
+download checksum but does not bypass Gatekeeper; macOS may require per-app
+first-launch approval in Privacy & Security. Camera and Accessibility permissions
+are separate, and an update may require granting Accessibility again. No app
+updates are fetched from the upstream Glance feed.
+
+Homebrew 7 may request trust before loading a third-party cask. To explicitly
+trust just this cask, use `brew trust --cask hhh2210/tap/glance-face-unlock`.
+The cask's CI audits and installs the published artifact into an isolated app
+directory without launching it or requesting camera access.
 
 ## native-space-kit
 

@@ -1,0 +1,56 @@
+name: cask installation
+
+on:
+  push:
+    branches: [main]
+    paths: ['Casks/**', '.github/workflows/casks.yml']
+  pull_request:
+    paths: ['Casks/**', '.github/workflows/casks.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: casks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  glance:
+    runs-on: macos-26
+    timeout-minutes: 15
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: 1
+      HOMEBREW_NO_INSTALL_CLEANUP: 1
+    steps:
+      - name: Set up Homebrew
+        id: brew
+        uses: Homebrew/actions/setup-homebrew@fd832223f9f99ebf0244dd20658680e5d4aca049 # 2026.08.03.2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Audit and install Glance Fork
+        env:
+          TAP_NAME: ${{ steps.brew.outputs.tap-name }}
+        run: |
+          set -euo pipefail
+          cask="$TAP_NAME/glance-face-unlock"
+          appdir="$RUNNER_TEMP/glance-apps"
+          mkdir -p "$appdir"
+          brew trust --cask "$cask"
+          brew style --cask "$cask"
+          brew audit --cask --strict --online "$cask"
+          brew install --cask --yes --require-sha --appdir="$appdir" "$cask"
+          app="$appdir/Glance Fork.app"
+          codesign --verify --deep --strict "$app"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = io.github.hhh2210.glance
+          for arch in arm64 x86_64; do
+            /usr/bin/lipo "$app/Contents/MacOS/Glance Fork" -verify_arch "$arch"
+          done
+      - name: Remove test installation
+        if: always()
+        env:
+          TAP_NAME: ${{ steps.brew.outputs.tap-name }}
+        run: |
+          if brew list --cask | grep -qx glance-face-unlock; then
+            brew uninstall --cask "$TAP_NAME/glance-face-unlock"
+          fi
