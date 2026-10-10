@@ -44,7 +44,7 @@ jobs:
           codesign --verify --deep --strict "$app"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")" = io.github.hhh2210.glance
           for arch in arm64 x86_64; do
-            lipo -verify_arch "$arch" "$app/Contents/MacOS/Glance Fork"
+            /usr/bin/lipo "$app/Contents/MacOS/Glance Fork" -verify_arch "$arch"
           done
       - name: Remove test installation
         if: always()
