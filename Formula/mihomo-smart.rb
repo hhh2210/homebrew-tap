@@ -1,17 +1,17 @@
 class MihomoSmart < Formula
   desc "Mihomo alpha with the Smart proxy group (vernesong fork)"
   homepage "https://github.com/vernesong/mihomo"
-  version "2026.11.13.0751"
+  version "2026.11.14.1727"
   license "GPL-3.0-only"
 
   # Upstream replaces the assets of one rolling tag on every build. The
   # version is the arm64 asset's upload time; the commit is in the URL.
   if Hardware::CPU.arm?
-    url "https://github.com/vernesong/mihomo/releases/download/Prerelease-Alpha/mihomo-darwin-arm64-alpha-smart-3c7751b.gz"
-    sha256 "361f940a0dfffbbfb4ac7183de9322377354b2db075b58d26c0d42943e3be517"
+    url "https://github.com/vernesong/mihomo/releases/download/Prerelease-Alpha/mihomo-darwin-arm64-alpha-smart-c4df732.gz"
+    sha256 "b80e04ab945e2b9eb48b2265bcb1df9c09122980d5cd0e0c7718b2768f99571d"
   else
-    url "https://github.com/vernesong/mihomo/releases/download/Prerelease-Alpha/mihomo-darwin-amd64-compatible-alpha-smart-3c7751b.gz"
-    sha256 "2ca870e1586794e3ab811e84caef81843d917004ace143f117ca84b1fc0e1fcb"
+    url "https://github.com/vernesong/mihomo/releases/download/Prerelease-Alpha/mihomo-darwin-amd64-compatible-alpha-smart-c4df732.gz"
+    sha256 "11476780810d0fe867377555d28f9cd25506cb84dc0aea5d6d8ba74500713374"
   end
 
   livecheck do
